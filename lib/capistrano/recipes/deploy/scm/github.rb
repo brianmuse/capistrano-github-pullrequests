@@ -39,7 +39,7 @@ module Capistrano
           execute << "#{git} clone #{verbose} #{args.join(' ')} #{variable(:repository)} #{destination}"
 
           if(variable(:pull_request_number)) 
-            execute << "cd #{destination} && #{git} fetch #{verbose} #{remote} +refs/pull/#{variable(:pull_request_number)}/merge: && #{git} checkout -qf FETCH_HEAD"
+            execute << "cd #{destination} && #{git} fetch #{verbose} #{remote} +refs/pull/#{variable(:pull_request_number)}/merge: && #{git} checkout #{verbose} -b deploy #{revision}"
           else
             execute << "cd #{destination} && #{git} checkout #{verbose} -b deploy #{revision}"
           end
@@ -86,7 +86,7 @@ module Capistrano
 
           # since we're in a local branch already, just reset to specified revision rather than merge
           if(variable(:pull_request_number)) 
-            execute << "#{git} fetch #{verbose} #{remote} +refs/pull/#{variable(:pull_request_number)}/merge: && #{git} checkout -qf FETCH_HEAD"
+            execute << "#{git} fetch #{verbose} #{remote} +refs/pull/#{variable(:pull_request_number)}/merge: && #{git} reset #{verbose} --hard #{revision}"
           else
             execute << "#{git} fetch #{verbose} #{remote} && #{git} fetch --tags #{verbose} #{remote} && #{git} reset #{verbose} --hard #{revision}"
           end
@@ -125,13 +125,18 @@ module Capistrano
         def query_revision(revision)
           raise ArgumentError, "Deploying remote branches is no longer supported.  Specify the remote branch as a local branch for the git repository you're deploying from (ie: '#{revision.gsub('origin/', '')}' rather than '#{revision}')." if revision =~ /^origin\//
           return revision if revision =~ /^[0-9a-f]{40}$/
+
+          if (variable(:pull_request_number))
+            revision = "refs/pull/#{variable(:pull_request_number)}/merge"
+          end
+
           command = scm('ls-remote', repository, revision)
           result = yield(command)
           revdata = result.split(/[\t\n]/)
           newrev = nil
           revdata.each_slice(2) do |refs|
             rev, ref = *refs
-            if ref.sub(/refs\/.*?\//, '').strip == revision.to_s
+            if ref.sub(/refs\/.*?\//, '').strip == revision.to_s || (variable(:pull_request_number) && ref == revision.to_s)
               newrev = rev
               break
             end
